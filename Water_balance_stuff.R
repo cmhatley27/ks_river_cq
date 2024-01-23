@@ -8,7 +8,6 @@ library(brunnermunzel)
 library(ggpubr)
 
 # Load data ---------------------------------------------------------------
-#as;dlfkjas;dlfkjas;ldfkj
 # Basic characteristics 
 
 CQ_summary <- read_csv('./DataFiles/hydro_data/event_char/CQ_summary.csv') %>%
