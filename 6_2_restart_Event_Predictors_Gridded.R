@@ -26,6 +26,8 @@ spei12_huc8 <- read_csv('./DataFiles/hydro_data/drought/spei12_huc8.csv')
 spei18_huc8 <- read_csv('./DataFiles/hydro_data/drought/spei18_huc8.csv')
 spei24_huc8 <- read_csv('./DataFiles/hydro_data/drought/spei24_huc8.csv')
 
+pet_huc8 <- read_csv('./DataFiles/hydro_data/drought/pet_huc8.csv')
+bal_huc8 <- read_csv('./DataFiles/hydro_data/drought/bal_huc8.csv')
 # Within-event total precip by HUC8 ---------------------------------------------
 
 #Function for adding up precip in a window from event start minus a buffer to event max
@@ -172,7 +174,7 @@ before_event_precip <- function(precip_frame, window_lengths, event_frame = even
   return(window_totals)
 }
 
-precip_anteevent_gridded <- data.frame(before_event_precip(precip_frame = precip_huc8, window_lengths = c(15,30,60,90,180,365)))
+precip_anteevent_gridded <- data.frame(before_event_precip(precip_frame = precip_huc8, window_lengths = c(7,15,30,60,90,180,270,365)))
 write_csv(precip_anteevent_gridded, './DataFiles/hydro_data/event_char/precip_anteevent_gridded.csv')
 
 
@@ -372,3 +374,53 @@ for(event_num in seq(events$event_number)) {
 colnames(spei24) <- paste0('d_', colnames(spei24_huc8)[-1], '_spei24')
 
 write_csv(spei24, './DataFiles/hydro_data/event_char/spei24.csv')
+
+
+
+# Cumul PET and balance before each event ---------------------------------------------
+
+windows <- c(1,3,6,9,12)
+for(window in 1:length(windows)){
+pet <- as_tibble(matrix(nrow = nrow(events), ncol = ncol(pet_huc8) - 1))
+
+for(event_num in seq(events$event_number)) {
+  event_filter <- subset(event_data, event == event_num)
+  start_date <- floor_date(event_filter$dateTime[1], 'month')
+  if(day(event_filter$dateTime[1]) < 15){start_date <- start_date - months(1)}
+  
+  event_window <- interval(start_date - months(windows[window]), start_date)
+  
+  pet_select <- pet_huc8 %>%
+    filter(date %within% event_window)
+  
+  pet_sums <- pet_select %>%
+    mutate(across(!date, sum))
+  
+  pet[event_num,] <- pet_sums[1,-1]
+}
+colnames(pet) <- paste0('d_', colnames(pet_huc8)[-1], '_pet',windows[window])
+write_csv(pet, file.path('DataFiles','hydro_data','event_char',paste0('pet',windows[window],'.csv')))
+}
+
+for(window in 1:length(windows)){
+  bal <- as_tibble(matrix(nrow = nrow(events), ncol = ncol(bal_huc8) - 1))
+  
+  for(event_num in seq(events$event_number)) {
+    event_filter <- subset(event_data, event == event_num)
+    start_date <- floor_date(event_filter$dateTime[1], 'month')
+    if(day(event_filter$dateTime[1]) < 15){start_date <- start_date - months(1)}
+    
+    event_window <- interval(start_date - months(windows[window]), start_date)
+    
+    bal_select <- bal_huc8 %>%
+      filter(date %within% event_window)
+    
+    bal_sums <- bal_select %>%
+      mutate(across(!date, sum))
+    
+    bal[event_num,] <- bal_sums[1,-1]
+  }
+  colnames(bal) <- paste0('d_', colnames(bal_huc8)[-1], '_bal',windows[window])
+  write_csv(bal, file.path('DataFiles','hydro_data','event_char',paste0('bal',windows[window],'.csv')))
+}
+

@@ -3,7 +3,7 @@ library(sf)
 library(terra)
 library(prism)
 library(SPEI)
-library(trend)
+
 
 
 # Download monthly climate data -------------------------------------------
@@ -56,49 +56,45 @@ tmax_ksrb_df <- terra::as.data.frame(tmax_ksrb, xy = TRUE)  %>%
   filter(!is.na(date))
 
 #Calculate Hargreaves PET
-tmin_wide <- tmin_ksrb_df %>%
-  pivot_wider(id_cols = date, names_from = c(x,y), values_from = tmin) %>%
-  select(!date)
+# install.packages("remotes")
+# remotes::install_github("tanerumit/hydrosystems")
+library(hydrosystems)
 
-tmax_wide <- tmax_ksrb_df %>%
-  pivot_wider(id_cols = date, names_from = c(x,y), values_from = tmax) %>%
-  select(!date)
-unique(tmin_ksrb_df$date)
-lats <- as.numeric(word(names(tmin_wide), 2, sep = '_'))
-
-pet <- hargreaves(tmin_wide, tmax_wide, lat = lats)
-pet_df <- as_data_frame(pet) %>%
-  mutate(date = unique(tmin_ksrb_df$date)) %>%
-  pivot_longer(!date, names_to = 'coord', values_to = 'pet') %>%
-  select(coord,date,pet)
-
+temps_comb <- left_join(tmin_ksrb_df, tmax_ksrb_df) %>%
+  mutate(mean = (tmin + tmax)/2,
+         diff = tmax - tmin,
+         pet = hargreavesPET(date, mean, diff, y))
 
 #Combine climate data & calculate spei
 climate_monthly_ksrb <- precip_ksrb_df %>%
   left_join(tmin_ksrb_df) %>%
   left_join(tmax_ksrb_df) %>%
-  mutate(pet = pet_df$pet) %>%
-  mutate(clim_balance = precip - pet) %>%
-  group_by(x,y) %>%
-  mutate(spei1 = spei(data = clim_balance, scale = 1, verbose = FALSE)$fitted,
-         spei3 = spei(data = clim_balance, scale = 3, verbose = FALSE)$fitted,
-         spei6 = spei(data = clim_balance, scale = 6, verbose = FALSE)$fitted,
-         spei9 = spei(data = clim_balance, scale = 9, verbose = FALSE)$fitted,
-         spei12 = spei(data = clim_balance, scale = 12, verbose = FALSE)$fitted,
-         spei18 = spei(data = clim_balance, scale = 18, verbose = FALSE)$fitted,
-         spei24 = spei(data = clim_balance, scale = 24, verbose = FALSE)$fitted) %>%
-  ungroup()
+  mutate(pet = hargreavesPET(date, (tmin + tmax)/2, tmax - tmin, y),
+         clim_balance = precip - pet)
+
+scales <- c(1,3,6,9,12,18,24)
+speis_out <- tibble(date = climate_monthly_ksrb$date)
+for(scale_sel in 1:length(scales)){
+  spei <- climate_monthly_ksrb %>%
+    group_by(x,y) %>%
+    summarise(val = spei(data = clim_balance, scale = scales[scale_sel], verbose = FALSE)$fitted)
+  colnames(spei)[3] <- paste0('spei',scales[scale_sel])
+  speis_out <- cbind(speis_out, spei)
+  print(paste0('scale ', scales[scale_sel], 'finished'))
+}
+
+all_climate <- left_join(climate_monthly_ksrb, select(speis_out, 'x','y',date,starts_with('spei')))
 
 #convert to rasters
 eksrb_boundary <- st_read('C:/School/SAFE KAW/Data/DataFiles/shapefiles/watershed_bndry.shp')
 
-for(vars in seq(4,ncol(climate_monthly_ksrb))){
-var_df <- climate_monthly_ksrb %>%
+for(vars in seq(4,ncol(all_climate))){
+var_df <- all_climate %>%
   select(x,y,date,vars) %>%
   pivot_wider(id_cols = c(x,y), names_from = date, values_from = 4)
 
 var_rast <- rast(var_df, crs = crs(eksrb_boundary), digits = 4)
-writeRaster(var_rast, paste0('C:/School/SAFE KAW/Data/DataFiles/climate_data/monthly_rasters/',names(climate_monthly_ksrb[vars]),'_ksrb.tiff'), overwrite = TRUE)
+writeRaster(var_rast, paste0('C:/School/SAFE KAW/Data/DataFiles/climate_data/monthly_rasters/',names(all_climate[vars]),'_ksrb.tiff'), overwrite = TRUE)
 }
 
 
@@ -149,7 +145,8 @@ for(huc8 in 1:nrow(huc8_boundaries)){
     filter(HUC8 == huc8_ids[huc8])
   
   local_spei1 <- mask(crop(spei1_ksrb, local_boundary), vect(local_boundary)) %>%
-    r2df(., 'spei1')
+    r2df(., 'spei1') %>%
+    filter(!is.infinite(spei1))
   
   mean_spei1 <- local_spei1 %>%
     group_by(date) %>%
@@ -175,7 +172,8 @@ for(huc8 in 1:nrow(huc8_boundaries)){
     filter(HUC8 == huc8_ids[huc8])
   
   local_spei3 <- mask(crop(spei3_ksrb, local_boundary), vect(local_boundary)) %>%
-    r2df(., 'spei3')
+    r2df(., 'spei3') %>%
+    filter(!is.infinite(spei3))
   
   mean_spei3 <- local_spei3 %>%
     group_by(date) %>%
@@ -201,7 +199,8 @@ for(huc8 in 1:nrow(huc8_boundaries)){
     filter(HUC8 == huc8_ids[huc8])
   
   local_spei6 <- mask(crop(spei6_ksrb, local_boundary), vect(local_boundary)) %>%
-    r2df(., 'spei6')
+    r2df(., 'spei6') %>%
+    filter(!is.infinite(spei6))
   
   mean_spei6 <- local_spei6 %>%
     group_by(date) %>%
@@ -227,7 +226,8 @@ for(huc8 in 1:nrow(huc8_boundaries)){
     filter(HUC8 == huc8_ids[huc8])
   
   local_spei9 <- mask(crop(spei9_ksrb, local_boundary), vect(local_boundary)) %>%
-    r2df(., 'spei9')
+    r2df(., 'spei9') %>%
+    filter(!is.infinite(spei9))
   
   mean_spei9 <- local_spei9 %>%
     group_by(date) %>%
@@ -253,7 +253,8 @@ for(huc8 in 1:nrow(huc8_boundaries)){
     filter(HUC8 == huc8_ids[huc8])
   
   local_spei12 <- mask(crop(spei12_ksrb, local_boundary), vect(local_boundary)) %>%
-    r2df(., 'spei12')
+    r2df(., 'spei12') %>%
+    filter(!is.infinite(spei12))
   
   mean_spei12 <- local_spei12 %>%
     group_by(date) %>%
@@ -279,7 +280,8 @@ for(huc8 in 1:nrow(huc8_boundaries)){
     filter(HUC8 == huc8_ids[huc8])
   
   local_spei18 <- mask(crop(spei18_ksrb, local_boundary), vect(local_boundary)) %>%
-    r2df(., 'spei18')
+    r2df(., 'spei18') %>%
+    filter(!is.infinite(spei18))
   
   mean_spei18 <- local_spei18 %>%
     group_by(date) %>%
@@ -305,7 +307,8 @@ for(huc8 in 1:nrow(huc8_boundaries)){
     filter(HUC8 == huc8_ids[huc8])
   
   local_spei24 <- mask(crop(spei24_ksrb, local_boundary), vect(local_boundary)) %>%
-    r2df(., 'spei24')
+    r2df(., 'spei24') %>%
+    filter(!is.infinite(spei24))
   
   mean_spei24 <- local_spei24 %>%
     group_by(date) %>%
@@ -316,6 +319,79 @@ for(huc8 in 1:nrow(huc8_boundaries)){
 
 names(spei24_huc8)[-1] <- huc8_ids
 write_csv(spei24_huc8, './DataFiles/hydro_data/drought/spei24_huc8.csv')
+
+
+
+# Average PET and Water Bal for each HUC8 ---------------------------------
+#raster to data frame function
+r2df <- function(raster, value_name = 'value'){
+  df <- terra::as.data.frame(raster, xy = TRUE) %>%
+    pivot_longer(-c(x,y), names_to = 'date', values_to = value_name) %>%
+    mutate(date = ymd(date))}
+
+#Load data
+huc8_boundaries <- st_read('C:/School/SAFE KAW/Data/DataFiles/shapefiles/created/huc8_boundaries.shp')
+
+pet_ksrb <- rast('C:/School/SAFE KAW/Data/DataFiles/climate_data/monthly_rasters/pet_ksrb.tiff')
+pet_ksrb_df <- r2df(pet_ksrb, 'pet')
+
+bal_ksrb <- rast('C:/School/SAFE KAW/Data/DataFiles/climate_data/monthly_rasters/clim_balance_ksrb.tiff')
+bal_ksrb_df <- r2df(bal_ksrb, 'bal')
+
+# PET
+
+pet_huc8 <- tibble(
+  date = as_date(names(pet_ksrb))
+)
+
+for(huc8 in 1:nrow(huc8_boundaries)){
+  
+  huc8_ids <- huc8_boundaries$HUC8
+  
+  local_boundary <- huc8_boundaries %>%
+    filter(HUC8 == huc8_ids[huc8])
+  
+  local_pet <- mask(crop(pet_ksrb, local_boundary), vect(local_boundary)) %>%
+    r2df(., 'pet') %>%
+    filter(!is.infinite(pet))
+  
+  mean_pet <- local_pet %>%
+    group_by(date) %>%
+    summarise(mean_pet = mean(pet))
+  
+  pet_huc8[,huc8+1] <- mean_pet[,2]
+}
+
+names(pet_huc8)[-1] <- huc8_ids
+write_csv(pet_huc8, './DataFiles/hydro_data/drought/pet_huc8.csv')
+
+
+# Balance
+
+bal_huc8 <- tibble(
+  date = as_date(names(bal_ksrb))
+)
+
+for(huc8 in 1:nrow(huc8_boundaries)){
+  
+  huc8_ids <- huc8_boundaries$HUC8
+  
+  local_boundary <- huc8_boundaries %>%
+    filter(HUC8 == huc8_ids[huc8])
+  
+  local_bal <- mask(crop(bal_ksrb, local_boundary), vect(local_boundary)) %>%
+    r2df(., 'bal') %>%
+    filter(!is.infinite(bal))
+  
+  mean_bal <- local_bal %>%
+    group_by(date) %>%
+    summarise(mean_bal = mean(bal))
+  
+  bal_huc8[,huc8+1] <- mean_bal[,2]
+}
+
+names(bal_huc8)[-1] <- huc8_ids
+write_csv(bal_huc8, './DataFiles/hydro_data/drought/bal_huc8.csv')
 
 # Plotting ----------------------------------------------------------------
 

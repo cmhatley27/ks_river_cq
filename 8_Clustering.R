@@ -9,8 +9,8 @@ library(factoextra)
 
 # Basic characteristics --------------------------------------------------
 
-CQ_summary <- read_csv('./DataFiles/hydro_data/event_char/CQ_summary.csv') %>%
-  select(FI, HI = HI_mean)
+CQ_summary <- read_csv('./DataFiles/hydro_data/other_params/CQ_summary.csv') %>%
+  select(FI_n, HI_n)
   
 simple_temporal <- read_csv('./DataFiles/hydro_data/event_char/simple_temporal.csv')
 simple_size <- read_csv('./DataFiles/hydro_data/event_char/simple_size.csv')
@@ -49,26 +49,44 @@ flow_ratios <- read_csv('./DataFiles/hydro_data/event_char/flow_ratios.csv')
 
 
 # Drought Predictors ------------------------------------------------------
-spei1 <- read_csv('./DataFiles/hydro_data/event_char/spei1.csv') %>%
-  select(contains(c('10260015', '10270104')))
+spei1 <- read_csv('./DataFiles/hydro_data/event_char/spei1.csv')
 
-spei3 <- read_csv('./DataFiles/hydro_data/event_char/spei3.csv') %>%
-  select(contains(c('10260015', '10270104')))
+spei3 <- read_csv('./DataFiles/hydro_data/event_char/spei3.csv')
 
-spei6 <- read_csv('./DataFiles/hydro_data/event_char/spei6.csv') %>%
-  select(contains(c('10260015', '10270104')))
+spei6 <- read_csv('./DataFiles/hydro_data/event_char/spei6.csv')
 
-spei9 <- read_csv('./DataFiles/hydro_data/event_char/spei9.csv') %>%
-  select(contains(c('10260015', '10270104')))
+spei9 <- read_csv('./DataFiles/hydro_data/event_char/spei9.csv')
 
-spei12 <- read_csv('./DataFiles/hydro_data/event_char/spei12.csv') %>%
-  select(contains(c('10260015', '10270104')))
+spei12 <- read_csv('./DataFiles/hydro_data/event_char/spei12.csv')
 
-spei18 <- read_csv('./DataFiles/hydro_data/event_char/spei18.csv') %>%
-  select(contains(c('10260015', '10270104')))
+spei18 <- read_csv('./DataFiles/hydro_data/event_char/spei18.csv')
 
-spei24 <- read_csv('./DataFiles/hydro_data/event_char/spei24.csv') %>%
-  select(contains(c('10260015', '10270104')))
+spei24 <- read_csv('./DataFiles/hydro_data/event_char/spei24.csv')
+
+pet1 <- read_csv('./DataFiles/hydro_data/event_char/pet1.csv')
+
+pet3 <- read_csv('./DataFiles/hydro_data/event_char/pet3.csv')
+
+pet6 <- read_csv('./DataFiles/hydro_data/event_char/pet6.csv')
+
+pet9 <- read_csv('./DataFiles/hydro_data/event_char/pet9.csv')
+
+pet12 <- read_csv('./DataFiles/hydro_data/event_char/pet12.csv')
+
+bal1 <- read_csv('./DataFiles/hydro_data/event_char/bal1.csv')
+
+bal3 <- read_csv('./DataFiles/hydro_data/event_char/bal3.csv')
+
+bal6 <- read_csv('./DataFiles/hydro_data/event_char/bal6.csv')
+
+bal9 <- read_csv('./DataFiles/hydro_data/event_char/bal9.csv')
+
+bal12 <- read_csv('./DataFiles/hydro_data/event_char/bal12.csv')
+
+droughts <- tibble(spei1, spei3, spei6, spei9, spei12, spei18, spei24, 
+                   pet1, pet3, pet6, pet9, pet12,
+                   bal1, bal3, bal6, bal9, bal12) %>%
+  select(contains(c('10260008', '10270104')))
 
 # * Correlated Predictors -------------------------------------------------
 
@@ -89,17 +107,11 @@ event_summary <- tibble(
   outflows_inevent_totals,
   outflows_deltas,
   flow_ratios,
-  spei1,
-  spei3,
-  spei6,
-  spei9,
-  spei12,
-  spei18,
-  spei24
+  droughts
 ) %>%
   mutate(wateryear = factor(wateryear),
          month = factor(month),
-         season = factor(season)) %>%
+         season = factor(season)) #%>%
   select(!contains(correlated_predictors[correlated_predictors != 'reservoir_runoff_ratio']))
 
 rm(CQ_summary, 
@@ -136,33 +148,37 @@ factor_mode <- function(x) {
 
 hclust_data <- event_summary %>%
   filter(complete.cases(.)) %>%
-  select(FI, HI)
+  #select(c(initial_Q, delta_rat_Q, reservoir_runoff_ratio, season_index, p_10260015_1d_total, d_10260015_bal1))
+  select(c(FI_n, HI_n))
+
+
+
 
 dist <- daisy(hclust_data, metric = 'euclidean')
 
 cls <- agnes(dist, method = 'ward')
 
-#fviz_nbclust(hclust_data, hcut, method = 'wss', k.max = 20)
+fviz_nbclust(hclust_data, hcut, method = 'wss', k.max = 20)
 
 # * for loop for calculating number of significant characteristics and average cluster size for each  number of clusters
-# k_summary <- tibble(
-#   k = seq(2, 25),
-#   diff_vars = NA,
-#   avg_n = NA,
-#   sd_n = NA,
-# )
-# 
-# for(k in k_summary$k){
-k <- 8
-# cls_id <- kmeans(hclust_data, centers = k, nstart = 10)$cluster
-cls_id <- cutree(cls, k = k)
+k_summary <- tibble(
+  k = seq(2, 15),
+  diff_vars = NA,
+  avg_n = NA,
+  sd_n = NA,
+)
+
+for(k in k_summary$k){
+#k <- 4
+#event_ids <- mutate(hclust_data, cluster = kmeans(hclust_data, centers = k, nstart = 10)$cluster)
+event_ids <- mutate(hclust_data, cluster = cutree(cls, k = k))
+cls_id <- left_join(event_summary, event_ids)$cluster
 #write_csv(as_tibble(cls_id), 'C:/School/SAFE KAW/Data/DataFiles/cluster_data/cluster_assignment.csv')
 
 #Add cluster ID back in
-event_summary_cluster <- event_summary %>%
-  filter(complete.cases(.)) %>%
-  mutate(cluster = cls_id,
-         season = factor(season, levels = c('Winter', 'Spring', 'Summer', 'Fall')))
+event_summary_cluster <- left_join(event_summary, event_ids) %>%
+  filter(!is.na(cluster)) %>%
+  mutate(season = factor(season, levels = c('Winter', 'Spring', 'Summer', 'Fall')))
 
 #summary statistics of variables for each cluster
 cluster_summary <- event_summary_cluster %>%
@@ -204,19 +220,21 @@ cluster_summary <- event_summary_cluster %>%
 
 #FI HI scatter
 ggplot(data = event_summary_cluster) +
-  geom_point(aes(x = FI, y = HI, color = factor(cluster))) +
+  geom_point(aes(x = FI_n, y = HI_n, color = factor(cluster))) +
   scale_color_discrete(name = 'Cluster') +
   xlab('') +
   ylab('') +
   xlim(-1,1) +
   ylim(-1,1) +
   geom_hline(yintercept = 0) +
-  geom_vline(xintercept = 0)
+  geom_vline(xintercept = 0) +
+  facet_wrap(vars(cluster))
 
 
 # * k-s test for sig different vars ---------------------------------------
 event_cdfs <- event_summary_cluster %>%
-  select(!c(FI, HI, where(is.factor))) %>%
+  select(!c(FI_n, HI_n, where(is.factor))) %>%
+  #select(cluster, initial_Q, max_Q, delta_Q, delta_rat_Q, total_Q, duration, duration_since_last, p_10260008_1d_total, p_10260008_30d_ante, d_10260008_spei12, reservoir_runoff_ratio) %>%
   pivot_longer(!cluster, names_to = 'var', values_to = 'value') %>%
   group_by(cluster, var) %>%
   arrange((value)) %>%
@@ -263,19 +281,24 @@ same_vars_obs <- same_vars %>%
 clst_obs <- event_summary_cluster %>%
   count(cluster)
 
-# k_summary$diff_vars[k-1] <- nrow(diff_vars)
-# k_summary$avg_n[k-1] <- mean(clst_obs$n)
-# k_summary$sd_n[k-1] <- sqrt(var(clst_obs$n))
-# 
-# print(paste0('k = ', k, '/', max(k_summary$k), ' finished'))
-# }
-# write_csv(k_summary, 'C:/School/SAFE KAW/Data/DataFiles/cluster_data/k_summary_ks/k_summary_kmeans.csv')
+k_summary$diff_vars[k-1] <- nrow(diff_vars)
+k_summary$avg_n[k-1] <- mean(clst_obs$n)
+k_summary$sd_n[k-1] <- sqrt(var(clst_obs$n))
+
+print(paste0('k = ', k, '/', max(k_summary$k), ' finished'))
+}
+#write_csv(k_summary, 'C:/School/SAFE KAW/Data/DataFiles/cluster_data/k_summary_ks/k_summary_reduced.csv')
 # write_csv(diff_vars_obs, 'C:/School/SAFE KAW/Data/DataFiles/cluster_data/k_summary_ks/sig_vars_kmeans.csv')
 # 
-# ggplot(data = k_summary) +
-#    geom_point(aes(x = k, y = diff_vars/k))
+k_summary <- k_summary %>%
+  mutate(ncomb = ncol(combn(k,2)))
+ggplot(data = k_summary) +
+   geom_point(aes(x = k, y = diff_vars/ncol(combn(k,2))))
+
+pairwise.wilcox.test(event_summary_cluster$initial_Q, event_summary_cluster$cluster, p.adjust.method = 'bonferroni')
 
 
+ncol(combn(14,2))
 #Rank vars by number of pairwise differences per cluster
 diff_vars_clust_summary_var <- tibble()
 diff_vars_clust_summary_n <- tibble()

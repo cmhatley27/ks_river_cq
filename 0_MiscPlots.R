@@ -2,6 +2,8 @@
 # Load common libraries and data ------------------------------------------
 library(tidyverse)
 library(ggpubr)
+source('load_and_combine.R')
+source('Theme+Settings.R')
 
 all_hydro_15min <- with_tz(read_csv('./DataFiles/hydro_data/all_hydro_15min.csv'), 'America/Chicago')
 all_hydro_daily <- read_csv('./DataFiles/hydro_data/all_hydro_daily.csv')
@@ -23,6 +25,8 @@ ggplot(data = cq_date) +
   xlab("Log Discharge (m^3/s)") +
   ylab("Log Concentration of Nitrate (mg/L)")
 ggsave('./Figures/LogCQ_byyear.tiff', device = "tiff", height = 6, width = 8, units = "in", compression = "lzw", dpi = 700)
+
+summary(lm(logC ~ logQ, data = cq_date))
 
 ggplot(data = cq_date) +
   geom_point(aes(x = logQ, y = logC, color = wateryear), alpha = 0.6, size = 1.5, shape = 19) +
@@ -213,7 +217,8 @@ ggplot(data = event_obs_long) +
 #calculate proportions of flow
 Qs <- all_hydro_15min %>%
   select(dateTime, wateryear, ends_with('_linterp')) %>%
-  select(!c(lawrenceQ_linterp, N_linterp))
+  select(!c(lawrenceQ_linterp, N_linterp)) %>%
+  mutate(wateryear = factor(wateryear))
 
 monthly_prop <- Qs %>%
   group_by(year = year(dateTime), month = month(dateTime)) %>%
@@ -229,8 +234,6 @@ yearly_prop_avg <- monthly_prop %>%
   group_by(wateryear) %>%
   summarise(prop = mean(prop))
 
-
-
 ##Range of proportions of reservoir outflow
 ggplot() +
   geom_histogram(data = monthly_prop, aes(x = prop), bins = 20) +
@@ -245,6 +248,57 @@ ggplot() +
 ggplot() +
   geom_col(data = yearly_prop_avg, aes(x = factor(wateryear), y = prop)) +
   ylim(c(0,1))
+
+# Reservoir Proportions ---------------------------------------------------
+
+#gather Qs
+Qs <- all_hydro_15min %>%
+  select(dateTime, wateryear, ends_with('_linterp')) %>%
+  select(!c(lawrenceQ_linterp, N_linterp)) %>%
+  mutate(wateryear = factor(wateryear))
+
+#sum total discharge from each source per year
+Qs_year <- Qs %>%
+  group_by(wateryear) %>%
+  summarise(across(ends_with('_linterp'),sum)) %>%
+  mutate(across(ends_with('_linterp'),~.*60*15)) %>%
+  pivot_longer(!wateryear, names_to = 'res', values_to = 'Q')
+
+#Total discharge from each source as proportion of River Q
+Qs_year_props <- Qs %>%
+  group_by(wateryear) %>%
+  summarise(across(ends_with('_linterp'),sum)) %>%
+  mutate(across(ends_with('_linterp'),~.*60*15)) %>%
+  group_by(wateryear) %>%
+  summarise(across(ends_with('_linterp'),~./riverQ_linterp)) %>%
+  pivot_longer(!wateryear, names_to = 'res', values_to = 'prop')
+
+group_by(Qs_year_props, res) %>%
+  summarise(mean = mean(prop)) %>%
+  arrange(desc(mean))
+
+#Total discharge from each reservoir as proportion of all reservoir releases
+Qs_year_props_resonly <- Qs %>%
+  group_by(wateryear) %>%
+  summarise(across(ends_with('_linterp'),sum)) %>%
+  mutate(across(ends_with('_linterp'),~.*60*15)) %>%
+  group_by(wateryear) %>%
+  summarise(across(ends_with('_linterp'),~./reservoir_sum_linterp)) %>%
+  pivot_longer(!wateryear, names_to = 'res', values_to = 'prop')
+
+group_by(Qs_year_props_resonly, res) %>%
+  summarise(mean = mean(prop)) %>%
+  arrange(desc(mean))
+
+##Yearly discharges from each reservoir
+ggplot() +
+  geom_col(data = subset(Qs_year, res == 'riverQ_linterp'), aes(x = wateryear, y = Q), color = 'black') +
+  geom_col(data = subset(Qs_year, res != 'riverQ_linterp' & res != 'reservoir_sum_linterp'), aes(x = wateryear, y = Q, fill = res), color = 'black')
+
+##Yearly proportions from each reservoir
+ggplot() +
+  geom_col(data = subset(Qs_year_props, res == 'riverQ_linterp'), aes(x = wateryear, y = prop), color = 'black') +
+  geom_col(data = subset(Qs_year_props, res != 'riverQ_linterp' & res != 'reservoir_sum_linterp'), aes(x = wateryear, y = prop, fill = res), color = 'black')
 
 
 # Monthly/Yearly precip across whole KSRB ---------------------------------
@@ -391,58 +445,85 @@ ggsave('./Figures/hydrographs/DeSoto_timescale_averages.tiff', device = 'tiff', 
 #Load Data
 spei1_ts <- read_csv('./DataFiles/hydro_data/drought/spei1_huc8.csv') %>%
   filter(date >= ymd('2013-10-01')) %>%
-  select(date, 'w' = '10260015', 'e' = '10270104') %>%
   mutate(scale = 1)
 spei3_ts <- read_csv('./DataFiles/hydro_data/drought/spei3_huc8.csv') %>%
   filter(date >= ymd('2013-10-01')) %>%
-  select(date, 'w' = '10260015', 'e' = '10270104') %>%
   mutate(scale = 3)
 spei6_ts <- read_csv('./DataFiles/hydro_data/drought/spei6_huc8.csv') %>%
   filter(date >= ymd('2013-10-01')) %>%
-  select(date, 'w' = '10260015', 'e' = '10270104') %>%
   mutate(scale = 6)
 spei9_ts <- read_csv('./DataFiles/hydro_data/drought/spei9_huc8.csv') %>%
   filter(date >= ymd('2013-10-01')) %>%
-  select(date, 'w' = '10260015', 'e' = '10270104') %>%
   mutate(scale = 9)
 spei12_ts <- read_csv('./DataFiles/hydro_data/drought/spei12_huc8.csv') %>%
   filter(date >= ymd('2013-10-01')) %>%
-  select(date, 'w' = '10260015', 'e' = '10270104') %>%
   mutate(scale = 12)
 spei18_ts <- read_csv('./DataFiles/hydro_data/drought/spei18_huc8.csv') %>%
   filter(date >= ymd('2013-10-01')) %>%
-  select(date, 'w' = '10260015', 'e' = '10270104') %>%
   mutate(scale = 18)
 spei24_ts <- read_csv('./DataFiles/hydro_data/drought/spei24_huc8.csv') %>%
   filter(date >= ymd('2013-10-01')) %>%
-  select(date, 'w' = '10260015', 'e' = '10270104') %>%
   mutate(scale = 24)
+
 
 spei_ts <- rbind(spei1_ts, spei3_ts, spei6_ts, spei9_ts, spei12_ts, spei18_ts, spei24_ts) %>%
   mutate(scale = factor(scale)) %>%
-  mutate(mean = (w+e)/2) %>%
-  pivot_longer(c(w,e,mean), names_to = 'location', values_to = 'spei')
-
+  pivot_longer(!c(date,scale), names_to = 'location', values_to = 'spei')
 spei_quants <- group_by(spei_ts, location, scale) %>%
   summarise(lower = quantile(spei, 0.25),
             upper = quantile(spei, 0.75),
             range = upper - lower)
       
-
-ggplot(data = subset(spei_ts, location != 'mean')) +
+loc_sel <- c('10270104', '10260008')
+ggplot(data = subset(spei_ts, location %in% loc_sel)) +
   geom_line(aes(x = date, y = spei, color = location)) +
-  geom_hline(data = subset(spei_quants, location != 'mean'), aes(yintercept = lower, color = location), linetype = 'dashed') +
-  geom_hline(data = subset(spei_quants, location != 'mean'), aes(yintercept = upper, color = location), linetype = 'dashed') +
+  geom_hline(data = subset(spei_quants, location %in% loc_sel), aes(yintercept = lower, color = location), linetype = 'dashed') +
+  geom_hline(data = subset(spei_quants, location %in% loc_sel), aes(yintercept = upper, color = location), linetype = 'dashed') +
   facet_wrap(vars(scale))
 
-ggplot(data = subset(spei_ts, location == 'mean')) +
-  geom_line(aes(x = date, y = spei, color = location)) +
-  geom_hline(data = subset(spei_quants, location == 'mean'), aes(yintercept = lower, color = location), linetype = 'dashed') +
-  geom_hline(data = subset(spei_quants, location == 'mean'), aes(yintercept = upper, color = location), linetype = 'dashed') +
+
+
+spei_ts_mean <- spei_ts %>%
+  group_by(date, scale) %>%
+  summarise(spei = mean(spei))
+spei_mean_quants <- group_by(spei_ts_mean,  scale) %>%
+  summarise(lower = quantile(spei, 0.25),
+            upper = quantile(spei, 0.75),
+            range = upper - lower)
+
+ggplot(data = spei_ts_mean) +
+  geom_line(aes(x = date, y = spei)) +
+  geom_hline(data = spei_mean_quants, aes(yintercept = lower), linetype = 'dashed') +
+  geom_hline(data = spei_mean_quants, aes(yintercept = upper), linetype = 'dashed') +
   scale_color_manual(values = c('black')) +
   facet_wrap(vars(scale))
 
 
+# Mean SPEI (basin-wide) per wateryear -------------------------------------------------
+spei12 <- read_csv('./DataFiles/hydro_data/drought/spei9_huc8.csv') %>%
+  filter(date >= ymd('2013-10-01') & date <= ymd('2022-09-30')) %>%
+  mutate(wateryear = ifelse(month(date) > 9, year(date) + 1, year(date))) %>%
+  pivot_longer(!c(date, wateryear), names_to = 'huc8', values_to = 'spei') %>%
+  group_by(wateryear) %>%
+  summarise(mean = mean(spei))
+
+ggplot(spei12, aes(x = wateryear, y = mean)) +
+  geom_line()
+
+
+# Mean total precip (basin-wide) per wateryear ----------------------------
+precip_mean <- read_csv('./DataFiles/hydro_data/precip/precip_huc8.csv') %>%
+  filter(date >= ymd('2013-10-01') & date <= ymd('2022-09-30')) %>%
+  mutate(wateryear = ifelse(month(date) > 9, year(date) + 1, year(date))) %>%
+  pivot_longer(!c(date, wateryear), names_to = 'huc8', values_to = 'precip') %>%
+  group_by(wateryear, huc8) %>%
+  summarise(total_depth = sum(precip)) %>%
+  filter(huc8 == '10270204') %>%
+  group_by(wateryear) %>%
+  summarise(mean_depth = mean(total_depth))
+
+ggplot(precip_mean, aes(x = wateryear, y = mean_depth)) +
+  geom_line()
 # Double mass curve -------------------------------------------------------
 
 dbl_mass <- tibble(
@@ -456,3 +537,105 @@ dbl_mass <- tibble(
 ggplot(data = dbl_mass) +
   geom_line(aes(x = p_cum, y = q_cum, color = wateryear)) +
   geom_abline(slope = lm(q_cum ~ p_cum + 0, data = dbl_mass)$coefficients[1])
+
+
+# CQ for all constituents -------------------------------------------------
+dat <- read_csv(file.path('DataFiles','hydro_data','other_params','des_15min.csv'))
+
+dat.daily <- group_by(dat, date(dateTime)) %>%
+  summarise(q = mean(q, na.rm = T),
+            n = mean(n, na.rm = T),
+            c = mean(c, na.rm = T),
+            t = mean(t, na.rm = T),)
+dat.long <- pivot_longer(dat.daily, c(n,c,t), names_to = 'var', values_to = 'val')
+
+ggplot(data = dat.long, aes(x = log10(q), y = log10(val))) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = F, color = 'blue') +
+  facet_wrap(vars(var), scales = 'free')
+
+
+# FI and HI for all constituents ------------------------------------------
+dat <- read_csv(file.path('DataFiles','hydro_data','other_params','CQ_summary.csv'))
+
+fi.long <- pivot_longer(dat, starts_with('FI'), names_to = 'var', values_to = 'FI') %>%
+  mutate(species = str_sub(var, -1)) %>%
+  select(event, species, FI)
+hi.long <- pivot_longer(dat, starts_with('HI'), names_to = 'var', values_to = 'HI') %>%
+  mutate(species = str_sub(var, -1)) %>%
+  select(event, species, HI)
+dat.long <- left_join(fi.long, hi.long) %>%
+  dplyr::rename(var = species)
+
+
+ggplot(data = dat.long, aes(x = FI, y = HI)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  facet_wrap(vars(var))
+
+ggplot(data = dat.long, aes(y = HI, x = var)) +
+  geom_boxplot()
+
+
+# FI HI Scatter -----------------------------------------------------------
+plot_dat <- filter(event_summary, !is.na(cluster)) %>%
+  mutate(isflush = FI_n > 0,
+         iscw = HI_n > 0,
+         isres = reservoir_runoff_ratio > 0.5,
+         res_season = paste0(season,'_',isres),
+         res_quart = cut(reservoir_runoff_ratio, c(0,0.25,0.5,0.75,max(reservoir_runoff_ratio)),
+                         labels = c(1,2,3,4)))
+season_means <- group_by(plot_dat, season, isres) %>%
+  summarise(FI_mean = mean(FI_n),
+            HI_mean = mean(HI_n),
+            FI_sd = var(FI_n)^0.5,
+            HI_sd = var(HI_n)^0.5)
+
+ggplot() +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_point(data = plot_dat, aes(x = FI_n, y = HI_n, color = season)) +
+  #geom_errorbar(data = season_means, aes(x = FI_mean, ymin = HI_mean - HI_sd, ymax = HI_mean + HI_sd, color = season)) +
+  #geom_errorbar(data = season_means, aes(y = HI_mean, xmin = FI_mean - FI_sd, xmax = FI_mean + FI_sd, color = season)) +
+  #geom_point(data = season_means, aes(x = FI_mean, y = HI_mean, color = season, shape = isres), size = 3) +
+  scale_color_manual(values = c('#8DA9C4','#60992D','#C33C54','#F4B860')) +
+  ylim(c(-1,1)) +
+  xlim(c(-1,1))
+ggplot(data = plot_dat, aes(y=season, x = FI_n, fill = season)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c('#8DA9C4','#60992D','#C33C54','#F4B860')) +
+  xlim(c(-1,1))
+
+pairwise.wilcox.test(plot_dat$FI_n, plot_dat$season, p.adjust.method = 'fdr')
+wilcox.test(plot_dat$FI_n[plot_dat$season == 'Winter'], plot_dat$FI_n[plot_dat$season == 'Spring'])
+wilcox.test(event_summary$HI_n[event_summary$season == 'Winter'], event_summary$HI_n[event_summary$season == 'Summer'])
+
+ggplot() +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_point(data = plot_dat, aes(x = FI_n, y = HI_n, color = isres)) +
+  ylim(c(-1,1)) +
+  xlim(c(-1,1))
+ggplot(data = plot_dat, aes(y=res_quart, x = FI_n, fill = res_quart, group = res_quart)) +
+  geom_boxplot() +
+  xlim(c(-1,1))
+
+pairwise.wilcox.test(plot_dat$FI_n, plot_dat$res_quart, p.adjust.method = 'fdr')
+wilcox.test(plot_dat$FI_n[plot_dat$res_quart == 1], plot_dat$FI_n[plot_dat$res_quart == 2])
+wilcox.test(plot_dat$HI_n[plot_dat$res_quart == TRUE], plot_dat$HI_n[plot_dat$res_quart == FALSE])
+
+
+ggplot(data = plot_dat, aes(y=season, x = FI_n, fill = season)) +
+  geom_boxplot() +
+  xlim(c(-1,1)) +
+  scale_fill_manual(values = c('#8DA9C4','#60992D','#C33C54','#F4B860')) +
+  facet_wrap(vars(isres), ncol = 1)
+pairwise.wilcox.test(plot_dat$FI_n, plot_dat$res_season, p.adjust.method = 'bonferroni')
+
+event_summary %>%
+  filter(!is.na(cluster)) %>%
+  mutate(isflush = FI_n > 0,
+         iscw = HI_n > 0) %>%
+  count(iscw)
+85/(131+84)

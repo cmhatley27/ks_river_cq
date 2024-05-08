@@ -105,6 +105,9 @@ baseflow_BFLOW <- function(Q, beta=0.925, passes=3){
   return(bf)
 }
 
+
+# Run filter --------------------------------------------------------------
+
 #Filter parameters
 alpha <- 0.992
 passes <- 12
@@ -112,9 +115,15 @@ passes <- 12
 #Run filter
 baseflow_15min <- data.frame(
   dateTime = all_hydro_15min$dateTime,
+  wateryear = all_hydro_15min$wateryear,
   riverQ_linterp = all_hydro_15min$riverQ_linterp,
   BFLOW = baseflow_BFLOW(all_hydro_15min$riverQ_linterp, alpha, passes)) %>%
   mutate(BFLOW_bfi = BFLOW/riverQ_linterp)
+median(baseflow_15min$BFLOW)
+
+ggplot(data = subset(baseflow_15min, wateryear == 2017)) +
+  geom_line(aes(x = dateTime, y = riverQ_linterp)) +
+  geom_line(aes(x = dateTime, y = BFLOW), color = 'red')
 
 
 # Delineate events based on BFI threshold ----------------------------------------------------
@@ -154,6 +163,11 @@ event.max <- function(event_frame, start_column = 'start_dateTime', end_column =
 }
 
 BFLOW_events_bfi_threshold <- event.max(BFLOW_events_bfi_threshold, Q_frame = all_hydro_15min, Q_column = 'riverQ_linterp', Q_dateTime_column = 'dateTime')
+# 
+# BFLOW_events_bfi_threshold <- left_join(BFLOW_events_bfi_threshold, select(all_hydro_15min, dateTime, riverQ_linterp), by = join_by(start_dateTime == dateTime))
+# write_csv(BFLOW_events_bfi_threshold, './DataFiles/hydro_data/event_delineations/BFLOW_events_bfi_threshold_initials.csv')
+# break -------------------------------------------------------------------
+
 
 #Write results
 write_csv(BFLOW_events_bfi_threshold, './DataFiles/hydro_data/event_delineations/BFLOW_events_bfi_threshold.csv')
@@ -172,7 +186,8 @@ ggplot(data = BFLOW_events_bfi_threshold) +
 
 BFLOW_events_bfi_threshold <- read_csv('./DataFiles/hydro_data/event_delineations/BFLOW_events_bfi_threshold.csv')
 events <- read_csv('DataFiles/hydro_data/event_delineations/BFLOW_events_bfi_threshold_adjusted.csv') %>%
-  select(start_dateTime, end_dateTime)
+  select(start_dateTime, end_dateTime) %>%
+  left_join(cbind(., select(event_summary, cluster)))
 
 ggplot(data = all_hydro_15min) +
   ##Event limits and labels
@@ -181,12 +196,12 @@ ggplot(data = all_hydro_15min) +
             #ymin = -200, ymax = 1.05*max(all_hydro_15min$riverQ_linterp), fill = 'grey90', color = 'grey50', linetype = 'dashed') +
   #geom_text(data = BFLOW_events_bfi_threshold, aes(x = start_dateTime, label = row_number(start_dateTime)), y = 0.3*max(all_hydro_15min$riverQ_linterp)) +
   #adjusted
-  geom_rect(data = events, aes(xmin = start_dateTime, xmax = end_dateTime), 
-            ymin = -200, ymax = 1.05*max(all_hydro_15min$riverQ_linterp), fill = 'grey90', color = 'grey50', linetype = 'dashed') +
+  geom_rect(data = events, aes(xmin = start_dateTime, xmax = end_dateTime, fill = factor(cluster)), 
+            ymin = -200, ymax = 1.05*max(all_hydro_15min$riverQ_linterp), color = 'grey50', alpha = 0.3, linetype = 'dashed') +
   geom_text(data = events, aes(x = start_dateTime, label = row_number(start_dateTime)), y = 0.3*max(all_hydro_15min$riverQ_linterp)) +
   
   ##Precip
-  #geom_col(data = all_hydro_daily, aes(x = as_datetime(date), y = lawrence_precip*10), fill = 'steelblue3', alpha = 0.5) +
+  geom_col(data = all_hydro_daily, aes(x = as_datetime(date), y = lawrence_precip*10), fill = 'steelblue3', alpha = 0.5) +
   #geom_col(data = all_hydro_daily, aes(x = as_datetime(date), y = manhattan_precip*10), color = 'purple', fill = NA) +
   #geom_col(data = all_hydro_daily, aes(x = as_datetime(date), y = topeka_precip*10), color = 'darkblue', fill = NA) +
   #geom_col(data = all_hydro_daily, aes(x = as_datetime(date), y = salina_precip*10), color = 'tomato1', fill = NA) +
@@ -199,13 +214,13 @@ ggplot(data = all_hydro_15min) +
   #geom_line(aes(x = dateTime, y = lawrenceQ_linterp), linetype = 'longdash', color = 'grey80') +
   
   ## Nitrate
-  #geom_line(aes(x = dateTime, y = N*300), color = 'red', alpha = 0.7) +
+  geom_line(aes(x = dateTime, y = N*300), color = 'red', alpha = 0.7) +
   
   ##Reservoir Outflows
   #geom_line(aes(x = dateTime, y = clintonQ), color = 'red') +
-  geom_line(aes(x = dateTime, y = milfordQ_linterp), color = 'gold') +
+  #geom_line(aes(x = dateTime, y = milfordQ_linterp), color = 'gold') +
   #geom_line(aes(x = dateTime, y = perryQ), color = 'lightblue') +
-  geom_line(aes(x = dateTime, y = tuttleQ_linterp), color = 'purple') +
+  #geom_line(aes(x = dateTime, y = tuttleQ_linterp), color = 'purple') +
   geom_line(aes(x = dateTime, y = reservoir_sum_linterp), color = 'darkgreen') +
   #geom_line(aes(x = dateTime, y = reservoir_sum_upstream_linterp), color = 'pink') +
   
@@ -222,9 +237,9 @@ ggplot(data = all_hydro_15min) +
 
   ##Theme and scale
   theme_classic() +
-  scale_y_continuous(limits = c(0, 3000), name = 'Q [m3/s]') +
+  scale_y_continuous(limits = c(0, 2000), name = 'Q [m3/s]') +
                      #sec.axis = sec_axis(trans = ~. / 75, name = 'N [mg/L]')) +
-  scale_x_datetime(limits = as_datetime(c('2017-10-01', '2018-09-30')),
+  scale_x_datetime(limits = as_datetime(c('2018-10-01', '2019-09-30')),
                    date_breaks = '1 month', date_labels = '%b', name = NULL)
 ggsave("./Figures/hydrographs/DeSoto_2019_half2_delineation.tiff", device = "tiff", height = 3.5, width = 10.5, units = "in", compression = "lzw", dpi = 700)
   
@@ -232,7 +247,7 @@ ggsave("./Figures/hydrographs/DeSoto_2019_half2_delineation.tiff", device = "tif
 
 # Zoom in on individual event ---------------------------------------------
 
-event_select <- 455
+event_select <- 64
 time_padding <- days(7)
 
 ggplot(data = all_hydro_15min) +

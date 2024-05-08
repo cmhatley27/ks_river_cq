@@ -6,7 +6,7 @@ library(bonsai)
 library(ranger)
 library(pROC)
 
-
+source('load_and_combine.R')
 
 # Load data ---------------------------------------------------------------
 
@@ -522,13 +522,14 @@ ggplot(data = class_ranger_stability) +
 
 #* Forward selection using CLUSTERS -------------------------------------------------------
 #* 
-class_data <- event_summary_cluster %>%
+class_data <- event_summary %>%
   dplyr::select(behavior = cluster,
-                c(diff_vars_obs_all$var)) %>%
+                everything()) %>%
+  select(!c(starts_with(c('FI', 'HI')), event)) %>%
   mutate(behavior = factor(behavior)) %>%
-  filter(complete.cases(.))
+  filter(!is.na(behavior))
 
-nseeds <- 15
+nseeds <- 2
 npred <- ncol(class_data) - 1
 
 class_ranger_npred_acc <- data.frame(

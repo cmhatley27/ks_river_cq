@@ -1,6 +1,5 @@
 library(tidyverse)
 library(ggpubr)
-library(FluMoDL)
 library(zoo)
 library(magrittr)
 library(quantreg)
@@ -172,7 +171,7 @@ plot_ly(data = CQ_summary, x = ~FI, y = ~HI_mean, text = ~paste(event))
 ##149 - simple diluting, low hysteresis
 ##150 - simple flushing, low hysteresis
 ##140 - ???
-event_select <- c(21)
+event_select <- c(115)
 
 #Graph event, time series
 ts <- event_data %>%
@@ -183,15 +182,16 @@ ts <- event_data %>%
   scale_color_datetime(low = 'blue', high = 'red') +
   
   facet_wrap(~var, ncol = 1, scales = "free_y")
-
+ts
 #Graph event, CQ
 cq <- event_data %>%
   filter(event == event_select) %>%
   ggplot(aes(x = riverQ_linterp, y = N_linterp_smooth, color = dateTime)) +
   geom_path() +
-  xlab('Flow') +
-  ylab('Nitrate') +
-  scale_color_datetime(low = 'blue', high = 'red', guide = 'none')
+  xlab('River Discharge') +
+  ylab('Nitrate Conc') +
+  scale_color_datetime(low = 'blue', high = 'red', guide = 'none') +
+  ggtitle(paste0('Event #',event_select))
 cq
 ggsave(str_c('./Figures/events/raw/cqloop/', as.character(event_select), '.tiff'), width = 6, height = 6, units = 'in', compression = 'lzw', dpi = 700)
 #Show time series + CQ

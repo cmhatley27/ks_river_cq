@@ -34,6 +34,8 @@ simple_temporal <- events %>%
     season = factor(month(floor_date(start_dateTime, unit = 'season')), levels = c(12,3,6,9), labels = c('Winter', 'Spring', 'Summer', 'Fall')),
     #Julian day
     yday = yday(start_dateTime),
+    #Seasonality Index (Knapp 2020)
+    season_index = ifelse(yday < 183, yday/182.5, (365-yday)/182.5),
     #Event duration (in days)
     duration = time_length(as.duration(interval(start = start_dateTime, end = end_dateTime)))/(60*60*24),
     #Duration since previous event (in days)
