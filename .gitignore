@@ -2,5 +2,11 @@
 .Rhistory
 .RData
 .Ruserdata
-DataFiles/
+DataFiles/hydro_data
+DataFiles/land_use
+DataFiles/prism_data
+DataFiles/shapefiles
+DataFiles/usace_reservoirs
 Figures/
+submission/
+readme.txt

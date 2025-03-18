@@ -17,3 +17,17 @@ theme_LJS <- function(...){
       strip.background=element_blank())
 }
 theme_set(theme_LJS())
+
+#Season palette
+season_palette <- c(
+  'Winter' = '#8DA9C4',
+  'Spring' = '#60992D',
+  'Summer' = '#C33C54',
+  'Fall' = '#F4B860')
+
+res_palette <- c(
+  'Reservoir' = '#E63946',
+  'Precip' = '#3066BE'
+)
+
+
